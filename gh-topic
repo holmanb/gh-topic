@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+# gh-topic — per-topic directories, addressed by PR.
+#
+# A topic is a local clone of the current repo on a branch named after
+# the topic, with a PR. Topic directories live under GH_TOPIC_ROOT
+# (default: $HOME), named <repo>-<branch>.
+
+set -euo pipefail
+
+die() {
+    echo "gh-topic: $*" >&2
+    exit 1
+}
+usage() {
+    echo "usage: gh topic new <name>" >&2
+    echo "       gh topic goto <branch-or-pr> [--open]" >&2
+    echo "       gh topic gc [--dry-run] [--force]" >&2
+    exit 2
+}
+
+root=${GH_TOPIC_ROOT:-$HOME}
+# repo of the current clone
+repo=$(gh repo view --json name -q .name)
+
+cmd_new() {
+    local branch=$1 dir
+    dir=$(clone_topic "$branch")
+    # branch starts at the parent's HEAD
+    git -C "$dir" checkout -b "$branch" >&2
+    echo "$dir"
+}
+
+cmd_goto() {
+    local arg open='' dir branch opt args=()
+    # flags may come in any order
+    for opt in "$@"; do
+        case $opt in
+        --open) open=1 ;;
+        *) args+=("$opt") ;;
+        esac
+    done
+    [ ${#args[@]} -eq 1 ] || usage
+    arg=${args[0]}
+    branch=$(branch_for_pr "$arg")
+    dir=$(topic_dir "$branch")
+    # create on first goto
+    if [ ! -d "$dir" ]; then
+        # a new topic needs a PR: a number argument already resolved to
+        # one above, a branch argument is checked here by name. A fork's
+        # PR is invisible to gh's by-name lookup, so numbers must not
+        # go through it
+        if ! is_pr "$arg"; then
+            gh pr view "$branch" --json number >/dev/null || die "no PR for branch $branch"
+        fi
+        dir=$(clone_topic "$branch")
+        checkout_topic_branch "$dir" "$branch"
+    fi
+    # an IDE failure still prints the path
+    [ -n "$open" ] && { code "$dir" >&2 || true; }
+    echo "$dir"
+}
+
+cmd_gc() {
+    local dry='' force='' status=0 opt dir branch state
+    for opt in "$@"; do
+        case $opt in
+        --dry-run) dry=1 ;;
+        --force) force=1 ;;
+        *) usage ;;
+        esac
+    done
+    for dir in "$root/$repo"-*/; do
+        # no topics
+        [ -d "$dir" ] || continue
+        dir=${dir%/}
+        branch=${dir#"$root/$repo"-}
+        branch=$(dirname_to_branch "$branch")
+        state=$(gh pr view "$branch" --json state -q .state 2>/dev/null) || continue
+        case $state in MERGED | CLOSED) ;; *) continue ;; esac
+        if [ -n "$(unmerged_changes "$dir")" ] && [ -z "$force" ]; then
+            echo "gh-topic: keeping $dir (unmerged changes)" >&2
+            status=1
+            continue
+        fi
+        if [ -n "$dry" ]; then
+            echo "would remove $dir"
+        else
+            rm -rf "$dir"
+            echo "removed $dir"
+        fi
+    done
+    exit "$status"
+}
+
+# branch → percent-encoded directory name
+branch_to_dirname() {
+    local s=$1
+    s=${s//%/%25}
+    s=${s//\//%2F}
+    echo "$s"
+}
+# percent-encoded directory name → branch
+dirname_to_branch() {
+    local s=$1
+    s=${s//%2F//}
+    s=${s//%25/%}
+    echo "$s"
+}
+topic_dir() { echo "$root/$repo-$(branch_to_dirname "$1")"; }
+
+# a local clone inherits the parent's
+# shape; refuse the shapes it can't
+require_cloneable_parent() {
+    local src=$1 why=()
+    [ "$(git -C "$src" rev-parse --is-shallow-repository)" = false ] || why+=(shallow)
+    [ -z "$(git -C "$src" config --get-regexp '^remote\..*\.promisor$' || true)" ] || why+=(partial)
+    [ ! -e "$(git -C "$src" rev-parse --absolute-git-dir)/objects/info/alternates" ] || why+=(alternates)
+    [ "$(git -C "$src" rev-parse --show-object-format)" = sha1 ] || why+=(sha256)
+    [ ${#why[@]} -eq 0 ] || die "cannot clone locally: parent is ${why[*]}"
+}
+
+# dir ← parent's remotes, origin repaired
+copy_remotes() {
+    local dir=$1 src=$2 name
+    while read -r name; do
+        [ "$name" = origin ] ||
+            git -C "$dir" remote add "$name" "$(git -C "$src" remote get-url "$name")"
+    done < <(git -C "$src" remote)
+}
+
+# branch → fresh topic dir, printed
+clone_topic() {
+    local branch=$1 dir src origin_url
+    dir=$(topic_dir "$branch")
+    [ ! -e "$dir" ] || die "$dir already exists"
+    src=$(git rev-parse --show-toplevel)
+    require_cloneable_parent "$src"
+    origin_url=$(git -C "$src" remote get-url origin 2>/dev/null) ||
+        die "parent repo has no origin remote"
+    # plain clone: hardlinks or copies
+    git clone --quiet "$src" "$dir" >&2
+    copy_remotes "$dir" "$src"
+    # gh resolves the repo from remotes
+    git -C "$dir" remote set-url origin "$origin_url"
+    echo "$dir"
+}
+
+# whether a goto argument is a PR number
+is_pr() { [[ $1 =~ ^[0-9]+$ ]]; }
+
+# PR number → branch; branch names pass through
+branch_for_pr() {
+    local arg=$1
+    if is_pr "$arg"; then
+        gh pr view "$arg" --json headRefName -q .headRefName
+    else
+        echo "$arg"
+    fi
+}
+
+# dir, branch → checked out, tracking origin
+checkout_topic_branch() {
+    local dir=$1 branch=$2
+    git -C "$dir" fetch --quiet origin "+refs/heads/$branch:refs/remotes/origin/$branch" >&2 ||
+        {
+            rm -rf "$dir"
+            die "no branch $branch on origin (cross-fork PRs are not supported yet)"
+        }
+    git -C "$dir" checkout -b "$branch" --track "origin/$branch" >&2 ||
+        {
+            rm -rf "$dir"
+            die "cannot check out $branch"
+        }
+}
+
+# dir → non-empty if work is not on a remote
+unmerged_changes() {
+    local dir=$1
+    git -C "$dir" fetch --quiet >/dev/null 2>&1 || true
+    if git -C "$dir" rev-parse --verify -q "@{u}" >/dev/null 2>&1; then
+        git -C "$dir" log --oneline "@{u}..HEAD"
+    else
+        git -C "$dir" log --oneline --branches --not --remotes
+    fi
+    git -C "$dir" status --porcelain
+}
+
+[ $# -gt 0 ] || usage
+case $1 in
+new)
+    [ $# -eq 2 ] || usage
+    cmd_new "$2"
+    ;;
+goto)
+    [ $# -ge 2 ] || usage
+    cmd_goto "${@:2}"
+    ;;
+gc) cmd_gc "${@:2}" ;;
+*) usage ;;
+esac
