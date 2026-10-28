@@ -134,7 +134,12 @@ expect_fail "new: empty name dies" "is not a valid branch name" new ""
         echo "ok: new empty name leaves no dir"
     }
 
-expect_fail "new: leading-dash name dies" "is not a valid branch name" new --open
+# --open is a flag now: a bare --open is a missing name, not a bad one
+expect_fail "new: bare --open dies with usage" "usage:" new --open
+
+# a leading-dash name is still rejected: -b is no flag, so it reaches
+# require_branch
+expect_fail "new: leading-dash name dies" "is not a valid branch name" new -b
 
 # the pre-fix dup: new main must not orphan a cloned dir when the
 # fresh clone already has the default branch
@@ -149,6 +154,32 @@ expect_fail "new: parent's default branch name dies" \
         PASS=$((PASS + 1))
         echo "ok: failed new leaves no orphan clone"
     }
+
+# new --open launches the editor on the fresh topic: the stub records
+# its arguments, so the launch itself is asserted, not just the rc
+rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
+rm -f "$GH_STUB_EDITOR_LOG"
+expect_ok "new: --open after the name succeeds" new open-me --open
+if [ "$(git -C "$T_ROOT/tako-open-me" rev-parse --abbrev-ref HEAD)" = open-me ] &&
+    grep -q "$T_ROOT/tako-open-me" "$GH_STUB_EDITOR_LOG"; then
+    PASS=$((PASS + 1))
+    echo "ok: new --open: editor launched on the topic dir"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: new --open: dir, checkout, or editor launch wrong"
+fi
+
+# flags may come in any order, as in goto
+rm -f "$GH_STUB_EDITOR_LOG"
+expect_ok "new: --open before the name succeeds" new --open open-me-2
+if [ -d "$T_ROOT/tako-open-me-2" ] &&
+    grep -q "$T_ROOT/tako-open-me-2" "$GH_STUB_EDITOR_LOG"; then
+    PASS=$((PASS + 1))
+    echo "ok: new --open: flag order does not matter"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: new --open before the name: dir or editor launch wrong"
+fi
 
 # valid names still work: dashless, slashed, unicode; the topic dir
 # is the percent-encoded branch and the branch is really checked out

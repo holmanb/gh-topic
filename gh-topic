@@ -12,7 +12,7 @@ die() {
     exit 1
 }
 usage() {
-    echo "usage: gh topic new <name>" >&2
+    echo "usage: gh topic new <name> [--open]" >&2
     echo "       gh topic goto <branch-or-pr> [--open]" >&2
     echo "       gh topic gc [--dry-run] [--force]" >&2
     exit 2
@@ -23,7 +23,16 @@ editor=${GH_TOPIC_EDITOR:-code}
 repo=$(gh repo view --json name -q .name)
 
 cmd_new() {
-    local branch=$1 dir
+    local branch dir open='' opt args=()
+    # flags may come in any order
+    for opt in "$@"; do
+        case $opt in
+            --open) open=1 ;;
+            *) args+=("$opt") ;;
+        esac
+    done
+    [ ${#args[@]} -eq 1 ] || usage
+    branch=${args[0]}
     require_branch "$branch"
     dir=$(clone_topic "$branch")
     git -C "$dir" checkout -b "$branch" >&2 ||
@@ -31,6 +40,8 @@ cmd_new() {
             rm -rf "$dir"
             die "cannot check out $branch"
         }
+    # an IDE failure still prints the path
+    [ -n "$open" ] && { $editor "$dir" >&2 || true; }
     echo "$dir"
 }
 
@@ -253,8 +264,8 @@ unmerged_changes() {
 [ $# -gt 0 ] || usage
 case $1 in
     new)
-        [ $# -eq 2 ] || usage
-        cmd_new "$2"
+        [ $# -ge 2 ] || usage
+        cmd_new "${@:2}"
         ;;
     goto)
         [ $# -ge 2 ] || usage

@@ -17,7 +17,7 @@ Topics may be created and accessed by running `gh topic <verb>` from a parent re
 
 ```bash
 cd <any repo>
-gh topic new my-topic       # fresh topic, branch my-topic, changes directory
+gh topic new my-topic --open # same, plus open-or-focus the IDE window
 # work, commit…
 gh pr create                # plain gh, from this point on `topic goto` works
 # edit code, push
@@ -95,8 +95,8 @@ each PR's state instead of you recalling which topics are done.
 Topic directories live under `GH_TOPIC_ROOT` (default: `$HOME`), named
 `<repo>-<branch>`.
 
-`goto --open` launches an IDE, `code` by default, configurable via
-`GH_TOPIC_EDITOR`.
+`new --open` and `goto --open` launch an IDE, `code` by default,
+configurable via `GH_TOPIC_EDITOR`.
 
 Each topic is an independent clone with its own remotes, so fetching inside
 a topic updates only that topic.

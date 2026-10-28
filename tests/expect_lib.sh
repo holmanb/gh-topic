@@ -27,6 +27,7 @@ env_exports() {
     export GH_STUB_FORK=fork/tako
     export GH_STUB_FORK_URL="$T_FIXTURES/fork.git"
     export GH_STUB_PRS="$T_FIXTURES/prs.txt"
+    export GH_STUB_EDITOR_LOG="$T_FIXTURES/editor.log"
     export HOME=${GH_TOPIC_TEST_HOME:-/tmp/gh-topic-tests/home}
     export GH_TOPIC_ROOT=$T_ROOT
     mkdir -p "$HOME"

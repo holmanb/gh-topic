@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# test stub for the IDE launcher: records its arguments so the suite
+# can assert that --open launched the editor on the topic dir
+echo "$*" >> "${GH_STUB_EDITOR_LOG:?}"
