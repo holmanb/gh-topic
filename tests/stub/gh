@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# test stub for gh — backs repo view/clone and pr view from env/fixtures.
+# gh-topic is exec'd from GH_TOPIC_SCRIPT so the suite tests the repo copy.
+set -u
+case "$1 $2" in
+    "repo view")
+        case "$4" in
+            name) echo "${GH_STUB_FORK#*/}" ;;
+            nameWithOwner) echo "$GH_STUB_FORK" ;;
+        esac
+        ;;
+    "repo clone")
+        exec git clone "$GH_STUB_FORK_URL" "${@: -1}"
+        ;;
+    "pr view")
+        # gh finds a PR by number, but by branch only when the branch is
+        # in the base repo: a fork's PR carries a qualified head label,
+        # which a bare branch selector never matches ($4 marks fork PRs)
+        line=$(awk -v k="$3" '$1==k || $2==k' "$GH_STUB_PRS")
+        [ -n "$line" ] || exit 1
+        if [[ $3 != [0-9]* ]]; then
+            [ -z "$(awk -v k="$3" '$2==k && $4=="fork"' "$GH_STUB_PRS")" ] || exit 1
+        fi
+        read -r num branch state forked <<< "$line"
+        case "$5" in
+            headRefName) echo "$branch" ;;
+            state) echo "$state" ;;
+            number) echo "$num" ;;
+            isCrossRepository) [ "${forked:-}" = fork ] && echo true || echo false ;;
+        esac
+        ;;
+    topic*)
+        exec "${GH_TOPIC_SCRIPT:?}" "${@:2}"
+        ;;
+    *) exit 1 ;;
+esac

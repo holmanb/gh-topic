@@ -95,6 +95,9 @@ each PR's state instead of you recalling which topics are done.
 Topic directories live under `GH_TOPIC_ROOT` (default: `$HOME`), named
 `<repo>-<branch>`.
 
+`goto --open` launches an IDE, `code` by default, configurable via
+`GH_TOPIC_EDITOR`.
+
 Each topic is an independent clone with its own remotes, so fetching inside
 a topic updates only that topic.
 
@@ -104,4 +107,8 @@ directory.
 
 A `goto` argument that is all digits is assumed to be a PR number, so an
 all-numeric branch name (`123`) is not addressable by `goto`.
+
+Branch names are git's, with one exception: a leading `-` is a valid git
+ref but cannot be passed through any command line, so `new` and `goto`
+refuse it.
 

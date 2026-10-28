@@ -19,14 +19,18 @@ usage() {
 }
 
 root=${GH_TOPIC_ROOT:-$HOME}
-# repo of the current clone
+editor=${GH_TOPIC_EDITOR:-code}
 repo=$(gh repo view --json name -q .name)
 
 cmd_new() {
     local branch=$1 dir
+    require_branch "$branch"
     dir=$(clone_topic "$branch")
-    # branch starts at the parent's HEAD
-    git -C "$dir" checkout -b "$branch" >&2
+    git -C "$dir" checkout -b "$branch" >&2 ||
+        {
+            rm -rf "$dir"
+            die "cannot check out $branch"
+        }
     echo "$dir"
 }
 
@@ -35,13 +39,14 @@ cmd_goto() {
     # flags may come in any order
     for opt in "$@"; do
         case $opt in
-        --open) open=1 ;;
-        *) args+=("$opt") ;;
+            --open) open=1 ;;
+            *) args+=("$opt") ;;
         esac
     done
     [ ${#args[@]} -eq 1 ] || usage
     arg=${args[0]}
     branch=$(branch_for_pr "$arg")
+    require_branch "$branch"
     dir=$(topic_dir "$branch")
     # create on first goto
     if [ ! -d "$dir" ]; then
@@ -50,13 +55,18 @@ cmd_goto() {
         # PR is invisible to gh's by-name lookup, so numbers must not
         # go through it
         if ! is_pr "$arg"; then
-            gh pr view "$branch" --json number >/dev/null || die "no PR for branch $branch"
+            gh pr view "$branch" --json number > /dev/null || die "no PR for branch $branch"
         fi
+        origin_has_branch "$arg" "$branch"
         dir=$(clone_topic "$branch")
         checkout_topic_branch "$dir" "$branch"
+    else
+        # an existing dir must be the topic: an interrupted goto
+        # leaves a clone on its initial branch
+        require_topic_branch "$dir" "$branch"
     fi
     # an IDE failure still prints the path
-    [ -n "$open" ] && { code "$dir" >&2 || true; }
+    [ -n "$open" ] && { $editor "$dir" >&2 || true; }
     echo "$dir"
 }
 
@@ -64,9 +74,9 @@ cmd_gc() {
     local dry='' force='' status=0 opt dir branch state
     for opt in "$@"; do
         case $opt in
-        --dry-run) dry=1 ;;
-        --force) force=1 ;;
-        *) usage ;;
+            --dry-run) dry=1 ;;
+            --force) force=1 ;;
+            *) usage ;;
         esac
     done
     for dir in "$root/$repo"-*/; do
@@ -75,7 +85,7 @@ cmd_gc() {
         dir=${dir%/}
         branch=${dir#"$root/$repo"-}
         branch=$(dirname_to_branch "$branch")
-        state=$(gh pr view "$branch" --json state -q .state 2>/dev/null) || continue
+        state=$(gh pr view "$branch" --json state -q .state 2> /dev/null) || continue
         case $state in MERGED | CLOSED) ;; *) continue ;; esac
         if [ -n "$(unmerged_changes "$dir")" ] && [ -z "$force" ]; then
             echo "gh-topic: keeping $dir (unmerged changes)" >&2
@@ -106,6 +116,7 @@ dirname_to_branch() {
     s=${s//%25/%}
     echo "$s"
 }
+
 topic_dir() { echo "$root/$repo-$(branch_to_dirname "$1")"; }
 
 # a local clone inherits the parent's
@@ -123,8 +134,9 @@ require_cloneable_parent() {
 copy_remotes() {
     local dir=$1 src=$2 name
     while read -r name; do
-        [ "$name" = origin ] ||
-            git -C "$dir" remote add "$name" "$(git -C "$src" remote get-url "$name")"
+        [ "$name" = origin ] && continue
+        git -C "$dir" remote add "$name" "$(git -C "$src" remote get-url "$name")" ||
+            return 1
     done < <(git -C "$src" remote)
 }
 
@@ -135,49 +147,102 @@ clone_topic() {
     [ ! -e "$dir" ] || die "$dir already exists"
     src=$(git rev-parse --show-toplevel)
     require_cloneable_parent "$src"
-    origin_url=$(git -C "$src" remote get-url origin 2>/dev/null) ||
+    origin_url=$(git -C "$src" remote get-url origin 2> /dev/null) ||
         die "parent repo has no origin remote"
     # plain clone: hardlinks or copies
-    git clone --quiet "$src" "$dir" >&2
-    copy_remotes "$dir" "$src"
+    git clone --quiet "$src" "$dir" >&2 ||
+        {
+            rm -rf "$dir"
+            die "cannot clone $src"
+        }
+    copy_remotes "$dir" "$src" ||
+        {
+            rm -rf "$dir"
+            die "cannot copy remotes"
+        }
     # gh resolves the repo from remotes
-    git -C "$dir" remote set-url origin "$origin_url"
+    git -C "$dir" remote set-url origin "$origin_url" ||
+        {
+            rm -rf "$dir"
+            die "cannot set origin"
+        }
     echo "$dir"
 }
 
 # whether a goto argument is a PR number
 is_pr() { [[ $1 =~ ^[0-9]+$ ]]; }
 
+# arg, branch → present on origin, or die with a factual cause, before any
+# clone is made. The argument decides the diagnosis: a number addresses
+# a fork's PR (a by-name lookup cannot), so cross-fork is the answer
+# there; a branch argument names a base-repo PR, and a base PR whose
+# branch is gone has had its head deleted — the normal merged state.
+origin_has_branch() {
+    local arg=$1 branch=$2
+    if ! git ls-remote --exit-code origin "refs/heads/$branch" > /dev/null 2>&1; then
+        if is_pr "$arg" &&
+            gh pr view "$arg" --json isCrossRepository -q .isCrossRepository 2> /dev/null | grep -qx true; then
+            die "cross-fork PRs are not supported yet (PR $arg's head branch $branch lives on a fork)"
+        fi
+        die "no branch $branch on origin (merged PRs have their head branch deleted)"
+    fi
+}
+
+# name → dies unless it can be a branch: git allows a leading dash
+# as a ref name but not as a command-line argument, so no command
+# could pass it through; the rules for the rest come from git itself
+require_branch() {
+    local name=$1
+    case $name in
+        '' | -*) die "'$name' is not a valid branch name" ;;
+    esac
+    git check-ref-format "refs/heads/$name" ||
+        die "'$name' is not a valid branch name"
+}
+
 # PR number → branch; branch names pass through
 branch_for_pr() {
     local arg=$1
     if is_pr "$arg"; then
-        gh pr view "$arg" --json headRefName -q .headRefName
+        gh pr view "$arg" --json headRefName -q .headRefName ||
+            die "no PR $arg"
     else
         echo "$arg"
     fi
 }
 
-# dir, branch → checked out, tracking origin
+# dir, branch → checked out, tracking origin. The presence of the ref
+# was already proven pre-clone, so a failure here means the remote moved
+# under us; -B because a head branch named like the clone's initial
+# branch (e.g. a PR whose head is "main") would make -b refuse the name
 checkout_topic_branch() {
     local dir=$1 branch=$2
     git -C "$dir" fetch --quiet origin "+refs/heads/$branch:refs/remotes/origin/$branch" >&2 ||
         {
             rm -rf "$dir"
-            die "no branch $branch on origin (cross-fork PRs are not supported yet)"
+            die "cannot fetch $branch from origin"
         }
-    git -C "$dir" checkout -b "$branch" --track "origin/$branch" >&2 ||
+    git -C "$dir" checkout -B "$branch" --track "origin/$branch" >&2 ||
         {
             rm -rf "$dir"
             die "cannot check out $branch"
         }
 }
 
+# dir, branch → dies unless the dir is a topic checked out on the
+# branch: an interrupted goto leaves a clone on its initial branch,
+# and a hand-made dir is not a topic at all
+require_topic_branch() {
+    local dir=$1 branch=$2
+    [ "$(git -C "$dir" rev-parse --abbrev-ref HEAD 2> /dev/null)" = "$branch" ] ||
+        die "$dir is not checked out on $branch (interrupted goto? remove it and retry)"
+}
+
 # dir → non-empty if work is not on a remote
 unmerged_changes() {
     local dir=$1
-    git -C "$dir" fetch --quiet >/dev/null 2>&1 || true
-    if git -C "$dir" rev-parse --verify -q "@{u}" >/dev/null 2>&1; then
+    git -C "$dir" fetch --quiet > /dev/null 2>&1 || true
+    if git -C "$dir" rev-parse --verify -q "@{u}" > /dev/null 2>&1; then
         git -C "$dir" log --oneline "@{u}..HEAD"
     else
         git -C "$dir" log --oneline --branches --not --remotes
@@ -187,14 +252,14 @@ unmerged_changes() {
 
 [ $# -gt 0 ] || usage
 case $1 in
-new)
-    [ $# -eq 2 ] || usage
-    cmd_new "$2"
-    ;;
-goto)
-    [ $# -ge 2 ] || usage
-    cmd_goto "${@:2}"
-    ;;
-gc) cmd_gc "${@:2}" ;;
-*) usage ;;
+    new)
+        [ $# -eq 2 ] || usage
+        cmd_new "$2"
+        ;;
+    goto)
+        [ $# -ge 2 ] || usage
+        cmd_goto "${@:2}"
+        ;;
+    gc) cmd_gc "${@:2}" ;;
+    *) usage ;;
 esac
