@@ -35,7 +35,7 @@ gh topic gc --force         # remove even topics with unmerged changes
 Requires `gh`, and `git`.
 
 ```bash
-gh extension install <owner>/gh-topic
+gh extension install holmanb/gh-topic
 ```
 
 ## Setup
@@ -111,4 +111,3 @@ all-numeric branch name (`123`) is not addressable by `goto`.
 Branch names are git's, with one exception: a leading `-` is a valid git
 ref but cannot be passed through any command line, so `new` and `goto`
 refuse it.
-
