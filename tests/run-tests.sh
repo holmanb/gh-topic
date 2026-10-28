@@ -16,7 +16,7 @@ mk_parent
 cd "$T_PARENT" || exit 1
 rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
 expect_out "new: prints a topic dir" "t-root" new t-new
-if [ -d "$T_ROOT/tako-t-new" ]; then
+if [ -d "$T_ROOT/gh-topic/tako-t-new" ]; then
     PASS=$((PASS + 1))
     echo "ok: new: topic dir created"
 else
@@ -25,7 +25,7 @@ else
 fi
 
 # new does not push: no upstream
-if git -C "$T_ROOT/tako-t-new" rev-parse --abbrev-ref "@{u}" > /dev/null 2>&1; then
+if git -C "$T_ROOT/gh-topic/tako-t-new" rev-parse --abbrev-ref "@{u}" > /dev/null 2>&1; then
     FAIL=$((FAIL + 1))
     echo "FAIL: new: topic branch unexpectedly has an upstream"
 else
@@ -38,8 +38,8 @@ fi
 # Before the fix this died with "no PR for branch"; now it must succeed.
 rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
 expect_ok "goto: fork PR by number creates the topic" goto 237
-if [ -d "$T_ROOT/tako-holmanb%2Fsyschanger-digest-glob" ] &&
-    [ "$(git -C "$T_ROOT/tako-holmanb%2Fsyschanger-digest-glob" rev-parse --abbrev-ref HEAD)" = "holmanb/syschanger-digest-glob" ]; then
+if [ -d "$T_ROOT/gh-topic/tako-holmanb%2Fsyschanger-digest-glob" ] &&
+    [ "$(git -C "$T_ROOT/gh-topic/tako-holmanb%2Fsyschanger-digest-glob" rev-parse --abbrev-ref HEAD)" = "holmanb/syschanger-digest-glob" ]; then
     PASS=$((PASS + 1))
     echo "ok: goto: fork topic checked out (percent-encoded dir)"
 else
@@ -64,7 +64,7 @@ expect_fail "goto: merged PR's deleted head, by branch, dies" \
 expect_fail "goto: merged PR's deleted head, by number, dies" \
     "no branch deleted-head on origin (merged" \
     goto 239
-[ -e "$T_ROOT"/tako-deleted-head ] && {
+[ -e "$T_ROOT"/gh-topic/tako-deleted-head ] && {
     FAIL=$((FAIL + 1))
     echo "FAIL: deleted head left a dir"
 } ||
@@ -77,8 +77,8 @@ expect_fail "goto: merged PR's deleted head, by number, dies" \
 # out (-b refuses the colliding name; -B reset-and-track survives it)
 rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
 expect_ok "goto: PR head named main checks out anyway" goto 240
-if [ "$(git -C "$T_ROOT/tako-main" rev-parse --abbrev-ref HEAD)" = main ] &&
-    [ "$(git -C "$T_ROOT/tako-main" rev-parse --abbrev-ref "@{u}" 2> /dev/null)" = origin/main ]; then
+if [ "$(git -C "$T_ROOT/gh-topic/tako-main" rev-parse --abbrev-ref HEAD)" = main ] &&
+    [ "$(git -C "$T_ROOT/gh-topic/tako-main" rev-parse --abbrev-ref "@{u}" 2> /dev/null)" = origin/main ]; then
     PASS=$((PASS + 1))
     echo "ok: collision head on branch, tracking origin/main"
 else
@@ -93,7 +93,7 @@ rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
 expect_fail "goto: empty branch name dies" \
     "is not a valid branch name" \
     goto ""
-[ -e "$T_ROOT/tako-" ] && {
+[ -e "$T_ROOT/gh-topic/tako-" ] && {
     FAIL=$((FAIL + 1))
     echo "FAIL: empty name left a dir"
 } ||
@@ -108,7 +108,7 @@ rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
 expect_fail "goto: leading-dash name dies" \
     "is not a valid branch name" \
     goto -b
-if [ -n "$(compgen -G "$T_ROOT/tako-*")" ]; then
+if [ -n "$(compgen -G "$T_ROOT/gh-topic/tako-*")" ]; then
     FAIL=$((FAIL + 1))
     echo "FAIL: dash name left a dir"
 else
@@ -125,7 +125,7 @@ expect_fail "goto: git-invalid name a..b dies" \
 # new: all the same rules apply before the clone
 rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
 expect_fail "new: empty name dies" "is not a valid branch name" new ""
-[ -e "$T_ROOT/tako-" ] && {
+[ -e "$T_ROOT/gh-topic/tako-" ] && {
     FAIL=$((FAIL + 1))
     echo "FAIL: new empty left a dir"
 } ||
@@ -146,7 +146,7 @@ expect_fail "new: leading-dash name dies" "is not a valid branch name" new -b
 rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
 expect_fail "new: parent's default branch name dies" \
     "cannot check out main" new main
-[ -e "$T_ROOT/tako-main" ] && {
+[ -e "$T_ROOT/gh-topic/tako-main" ] && {
     FAIL=$((FAIL + 1))
     echo "FAIL: new main left an orphan dir"
 } ||
@@ -160,8 +160,8 @@ expect_fail "new: parent's default branch name dies" \
 rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
 rm -f "$GH_STUB_EDITOR_LOG"
 expect_ok "new: --open after the name succeeds" new open-me --open
-if [ "$(git -C "$T_ROOT/tako-open-me" rev-parse --abbrev-ref HEAD)" = open-me ] &&
-    grep -q "$T_ROOT/tako-open-me" "$GH_STUB_EDITOR_LOG"; then
+if [ "$(git -C "$T_ROOT/gh-topic/tako-open-me" rev-parse --abbrev-ref HEAD)" = open-me ] &&
+    grep -q "$T_ROOT/gh-topic/tako-open-me" "$GH_STUB_EDITOR_LOG"; then
     PASS=$((PASS + 1))
     echo "ok: new --open: editor launched on the topic dir"
 else
@@ -172,8 +172,8 @@ fi
 # flags may come in any order, as in goto
 rm -f "$GH_STUB_EDITOR_LOG"
 expect_ok "new: --open before the name succeeds" new --open open-me-2
-if [ -d "$T_ROOT/tako-open-me-2" ] &&
-    grep -q "$T_ROOT/tako-open-me-2" "$GH_STUB_EDITOR_LOG"; then
+if [ -d "$T_ROOT/gh-topic/tako-open-me-2" ] &&
+    grep -q "$T_ROOT/gh-topic/tako-open-me-2" "$GH_STUB_EDITOR_LOG"; then
     PASS=$((PASS + 1))
     echo "ok: new --open: flag order does not matter"
 else
@@ -187,7 +187,7 @@ for b in "fresh" "feat/x" "ümlaut"; do
     rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
     expect_ok "new: valid name $b creates a topic" new "$b"
     # dirname: branch with %25 and %2F encoding, e.g. feat/x → feat%2Fx
-    d=$T_ROOT/tako-$(printf '%s' "$b" | sed 's/%/%25/g; s;/;%2F;g')
+    d=$T_ROOT/gh-topic/tako-$(printf '%s' "$b" | sed 's/%/%25/g; s;/;%2F;g')
     # new does not push: no upstream (rule from the earlier new tests)
     if git -C "$d" rev-parse --abbrev-ref "@{u}" > /dev/null 2>&1; then
         FAIL=$((FAIL + 1))
@@ -205,7 +205,7 @@ done
 # error (the stub exits silently); gh-topic must fail, not create anything.
 rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
 expect_fail "goto: unknown PR number dies" "no PR 999" goto 999
-if [ -n "$(compgen -G "$T_ROOT/tako-*")" ]; then
+if [ -n "$(compgen -G "$T_ROOT/gh-topic/tako-*")" ]; then
     FAIL=$((FAIL + 1))
     echo "FAIL: unknown PR left a dir"
 else
@@ -220,13 +220,13 @@ expect_fail "goto: branch without a PR dies" "no PR for branch" goto no-such
 
 # --- goto: an existing dir must be the topic, not a zombie ---
 # a hand-made dir is not a topic at all
-rm -rf "$T_ROOT" && mkdir -p "$T_ROOT/tako-fresh"
+rm -rf "$T_ROOT" && mkdir -p "$T_ROOT/gh-topic/tako-fresh"
 expect_fail "goto: hand-made dir dies" \
     "is not checked out on fresh" \
     goto fresh
 # an interrupted goto leaves a clone on its initial branch
 rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
-git clone -q "$T_PARENT" "$T_ROOT/tako-fresh"
+git clone -q "$T_PARENT" "$T_ROOT/gh-topic/tako-fresh"
 expect_fail "goto: interrupted clone dies" \
     "is not checked out on fresh" \
     goto fresh
@@ -261,7 +261,7 @@ RO=$T_FIXTURES/ro-root
 rm -rf "$RO" && mkdir -p "$RO"
 chmod 555 "$RO"
 GH_TOPIC_ROOT=$RO expect_fail "new: clone failure dies" "cannot clone" new fail-clone
-if [ -n "$(compgen -G "$RO/tako-*")" ]; then
+if [ -n "$(compgen -G "$RO/gh-topic/tako-*")" ]; then
     FAIL=$((FAIL + 1))
     echo "FAIL: failed clone left a dir"
 else
@@ -297,7 +297,7 @@ if command -v fish > /dev/null; then
         and gh topic goto 237
         and pwd" < /dev/null 2>&1 | tail -1)
     case $out in
-        *$T_ROOT/tako-holmanb%2Fsyschanger-digest-glob*)
+        *$T_ROOT/gh-topic/tako-holmanb%2Fsyschanger-digest-glob*)
             PASS=$((PASS + 1))
             echo "ok: fish wrapper cds into a created topic"
             ;;

@@ -2,8 +2,8 @@
 # gh-topic — per-topic directories, addressed by PR.
 #
 # A topic is a local clone of the current repo on a branch named after
-# the topic, with a PR. Topic directories live under GH_TOPIC_ROOT
-# (default: $HOME), named <repo>-<branch>.
+# the topic, with a PR. Topic directories live under
+# GH_TOPIC_ROOT/gh-topic (default: $XDG_DATA_HOME/gh-topic), named <repo>-<branch>.
 
 set -euo pipefail
 
@@ -18,7 +18,7 @@ usage() {
     exit 2
 }
 
-root=${GH_TOPIC_ROOT:-$HOME}
+root=${GH_TOPIC_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}}/gh-topic
 editor=${GH_TOPIC_EDITOR:-code}
 repo=$(gh repo view --json name -q .name)
 

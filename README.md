@@ -92,8 +92,12 @@ each PR's state instead of you recalling which topics are done.
 
 ## Notes
 
-Topic directories live under `GH_TOPIC_ROOT` (default: `$HOME`), named
-`<repo>-<branch>`.
+Topic directories live under `GH_TOPIC_ROOT/gh-topic` (default:
+`$XDG_DATA_HOME/gh-topic`, falling back to `$HOME/.local/share/gh-topic`),
+named `<repo>-<branch>`. The `gh-topic` subdirectory isolates topics from
+unrelated content, so `gc` — which removes directories matching
+`<repo>-<branch>` whose PRs are merged or closed — cannot reach anything
+outside it.
 
 `new --open` and `goto --open` launch an IDE, `code` by default,
 configurable via `GH_TOPIC_EDITOR`.
