@@ -12,6 +12,7 @@ Topics may be created and accessed by running `gh topic <verb>` from a parent re
 - `gh topic new <name>` — create a topic and change into it: a branch named after the topic, starting at the parent's `HEAD`.
 - `gh topic goto <branch-or-pr>` — change directory, creating the topic if needed.
 - `gh topic gc` — remove topics whose PRs are merged or closed.
+- `gh topic ls` — list this repo's topics: PR number, directory, and branch.
 
 ## Usage
 
@@ -28,6 +29,7 @@ gh topic goto --open 234    # same, plus open-or-focus the IDE window
 gh topic gc --dry-run       # list what would be removed, non-destructively
 gh topic gc                 # remove topics whose PRs have been merged or closed
 gh topic gc --force         # remove even topics with unmerged changes
+gh topic ls                 # list topics: PR number, directory, branch
 ```
 
 ## Install
@@ -85,6 +87,7 @@ A worktree-based workflow is replaced as follows:
 | `git worktree add <dir> -b <branch>`, then `cd <dir>` | `gh topic new <branch>` |
 | `cd <dir>` to resume, `gh pr checkout <pr>` to review | `gh topic goto <branch-or-pr>` |
 | `git worktree remove <dir>`, then `git branch -d <branch>` | `gh topic gc` |
+| `git worktree list` | `gh topic ls` |
 
 The directory is derived from the repo and branch, so there is no location
 to choose or remember (and therefore no other stored state), and `gc` reads

@@ -15,6 +15,7 @@ usage() {
     echo "usage: gh topic new <name> [--open]" >&2
     echo "       gh topic goto <branch-or-pr> [--open]" >&2
     echo "       gh topic gc [--dry-run] [--force]" >&2
+    echo "       gh topic ls" >&2
     exit 2
 }
 
@@ -81,8 +82,24 @@ cmd_goto() {
     echo "$dir"
 }
 
+# branch → PR number and state, from a single gh pr list call.
+# A temp file avoids bash 4 associative arrays; awk looks up by branch.
+# Dies if the API call fails, so ls and gc never silently show stale data.
+load_prs() {
+    local tmp
+    tmp=$(mktemp) || die "cannot create temp file"
+    # External jq avoids gh's internal -q flag, which fails when stdout is redirected.
+    gh pr list --state all --json number,headRefName,state \
+        --limit 1000 | jq -r '.[] | "\(.number)\t\(.headRefName)\t\(.state)"' \
+        > "$tmp" || {
+        rm -f "$tmp"
+        die "cannot list PRs"
+    }
+    echo "$tmp"
+}
+
 cmd_gc() {
-    local dry='' force='' status=0 opt dir branch state
+    local dry='' force='' status=0 opt dir branch state prs
     for opt in "$@"; do
         case $opt in
             --dry-run) dry=1 ;;
@@ -90,13 +107,14 @@ cmd_gc() {
             *) usage ;;
         esac
     done
+    prs=$(load_prs)
     for dir in "$root/$repo"-*/; do
         # no topics
         [ -d "$dir" ] || continue
         dir=${dir%/}
         branch=${dir#"$root/$repo"-}
         branch=$(dirname_to_branch "$branch")
-        state=$(gh pr view "$branch" --json state -q .state 2> /dev/null) || continue
+        state=$(awk -F'\t' -v b="$branch" '$2==b {print $3; found=1; exit} END {exit !found}' "$prs") || continue
         case $state in MERGED | CLOSED) ;; *) continue ;; esac
         if [ -n "$(unmerged_changes "$dir")" ] && [ -z "$force" ]; then
             echo "gh-topic: keeping $dir (unmerged changes)" >&2
@@ -110,7 +128,23 @@ cmd_gc() {
             echo "removed $dir"
         fi
     done
+    rm -f "$prs"
     exit "$status"
+}
+
+cmd_ls() {
+    local dir branch pr prs
+    prs=$(load_prs)
+    for dir in "$root/$repo"-*/; do
+        # no topics
+        [ -d "$dir" ] || continue
+        dir=${dir%/}
+        branch=${dir#"$root/$repo"-}
+        branch=$(dirname_to_branch "$branch")
+        pr=$(awk -F'\t' -v b="$branch" '$2==b {print $1; found=1; exit} END {exit !found}' "$prs") || pr='-'
+        printf '%s\t%s\t%s\n' "$pr" "$dir" "$branch"
+    done
+    rm -f "$prs"
 }
 
 # branch → percent-encoded directory name
@@ -272,5 +306,6 @@ case $1 in
         cmd_goto "${@:2}"
         ;;
     gc) cmd_gc "${@:2}" ;;
+    ls) cmd_ls ;;
     *) usage ;;
 esac

@@ -29,6 +29,11 @@ case "$1 $2" in
             isCrossRepository) [ "${forked:-}" = fork ] && echo true || echo false ;;
         esac
         ;;
+    "pr list")
+        # JSON array — matches gh pr list --json output
+        awk '{printf "{\"number\":%s,\"headRefName\":\"%s\",\"state\":\"%s\"},\n", $1, $2, $3}' "$GH_STUB_PRS" \
+            | sed '1s/^/[/; $s/,$/\n]/'
+        ;;
     topic*)
         exec "${GH_TOPIC_SCRIPT:?}" "${@:2}"
         ;;

@@ -21,11 +21,12 @@ touch "$W/f" && git -C "$W" add f && git -C "$W" commit -qm init
 # branches the PR fixtures reference; every branch is created in the
 # graph, but 239's head was deleted on origin — GitHub's post-merge
 # default — so the push list omits it: ls-remote must not see it
-for b in my-topic other fresh holmanb/syschanger-digest-glob keep-main-alive main-with-pr deleted-head; do
+for b in my-topic other fresh holmanb/syschanger-digest-glob keep-main-alive main-with-pr deleted-head holmanb/merged-fork; do
     git -C "$W" branch "$b" main
 done
 git -C "$W" push -q "$FIXTURES/fork.git" main my-topic other fresh \
-    holmanb/syschanger-digest-glob keep-main-alive main-with-pr
+    holmanb/syschanger-digest-glob keep-main-alive main-with-pr \
+    holmanb/merged-fork
 rm -rf "$W"
 
 # PR fixtures: num branch state [fork]
@@ -40,4 +41,5 @@ cat > "$FIXTURES/prs.txt" << 'EOF'
 238 gone-fork-branch OPEN fork
 239 deleted-head MERGED
 240 main OPEN
+241 holmanb/merged-fork MERGED fork
 EOF

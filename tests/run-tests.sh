@@ -255,7 +255,11 @@ case $TOPIC_OUT in
         ;;
 esac
 
-# --- clone failure must not leave a dir behind ---
+# gc also collects fork-PR topics: a merged fork PR's topic is
+# removed, not silently leaked (241 is a merged fork PR)
+rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
+topic goto 241 > /dev/null
+expect_out "gc: dry-run lists fork-PR topic" "holmanb%2Fmerged-fork" gc --dry-run
 # a read-only topic root makes the clone fail inside clone_topic
 RO=$T_FIXTURES/ro-root
 rm -rf "$RO" && mkdir -p "$RO"
@@ -269,6 +273,80 @@ else
     echo "ok: failed clone leaves no dir"
 fi
 chmod 755 "$RO"
+
+# --- ls ---
+# empty root: no topics, no output, success
+rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
+topic ls
+if [ -z "$TOPIC_OUT" ] && [ "$TOPIC_RC" -eq 0 ]; then
+    PASS=$((PASS + 1))
+    echo "ok: ls: empty root prints nothing"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: ls: empty root produced output or failed"
+fi
+
+# a new topic (no PR, no push) is listed with a dash for the PR —
+# the crash-recovery scenario this command exists for
+rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
+topic new crashed-topic > /dev/null
+topic ls
+case "$TOPIC_OUT" in
+    *"-"$'\t'*"$T_ROOT/gh-topic/tako-crashed-topic"$'\t'*)
+        PASS=$((PASS + 1))
+        echo "ok: ls: new topic shows dash PR, dir, branch"
+        ;;
+    *)
+        FAIL=$((FAIL + 1))
+        echo "FAIL: ls: new topic line wrong: out=$TOPIC_OUT"
+        ;;
+esac
+
+# a base-repo PR topic shows the PR number
+rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
+topic goto fresh > /dev/null
+topic ls
+case "$TOPIC_OUT" in
+    *"236"$'\t'*"$T_ROOT/gh-topic/tako-fresh"$'\t'*)
+        PASS=$((PASS + 1))
+        echo "ok: ls: base-PR topic shows PR number"
+        ;;
+    *)
+        FAIL=$((FAIL + 1))
+        echo "FAIL: ls: base-PR topic line wrong: out=$TOPIC_OUT"
+        ;;
+esac
+
+# a fork-PR topic is found by gh pr list (headRefName matches the
+# bare branch), so the PR number is shown — not a dash
+rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
+topic goto 237 > /dev/null
+topic ls
+case "$TOPIC_OUT" in
+    *"237"$'\t'*"$T_ROOT/gh-topic/tako-holmanb%2Fsyschanger-digest-glob"$'\t'*)
+        PASS=$((PASS + 1))
+        echo "ok: ls: fork-PR topic shows PR number"
+        ;;
+    *)
+        FAIL=$((FAIL + 1))
+        echo "FAIL: ls: fork-PR topic line wrong: out=$TOPIC_OUT"
+        ;;
+esac
+
+# multiple topics: one line each, all present
+rm -rf "$T_ROOT" && mkdir -p "$T_ROOT"
+topic new no-pr > /dev/null
+topic goto fresh > /dev/null
+topic goto my-topic > /dev/null
+topic ls
+lines=$(printf '%s\n' "$TOPIC_OUT" | wc -l)
+if [ "$lines" -eq 3 ]; then
+    PASS=$((PASS + 1))
+    echo "ok: ls: one line per topic"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: ls: expected 3 lines, got $lines: out=$TOPIC_OUT"
+fi
 
 # --- fish wrapper, extracted from README (source of truth) ---
 # a failing goto must not cd; a succeeding one must cd.
