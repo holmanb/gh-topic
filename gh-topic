@@ -194,6 +194,9 @@ clone_topic() {
     require_cloneable_parent "$src"
     origin_url=$(git -C "$src" remote get-url origin 2> /dev/null) ||
         die "parent repo has no origin remote"
+    # stale or broken remote-tracking refs break git clone;
+    # fetch --prune refreshes objects and removes deleted refs
+    git -C "$src" fetch --prune origin >&2 || true
     # plain clone: hardlinks or copies
     git clone --quiet "$src" "$dir" >&2 ||
         {
